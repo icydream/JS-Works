@@ -1,0 +1,254 @@
+<html>
+	<title></title>
+	<style type="text/css">
+		div.container {
+			height: 200px;
+			display: flex;
+		}
+		div.start {
+  			width: 33%;
+  			background-color: powderblue;
+  			margin: 0 auto;
+  			position: relative;
+		}
+		div.end {
+			width: 33%;
+  			background-color: #e094ae;
+  			margin: 0 auto;
+  			position: relative;
+		}
+		div.temp {
+			width: 33%;
+  			background-color: #e6de99;
+  			margin: 0 auto;
+  			position: relative;
+		}
+		div.disk {
+			z-index: 1;
+			position: absolute;
+			background-color: #9dda56;
+		}
+	</style>
+	<script type="text/javascript">
+		document.addEventListener('DOMContentLoaded', evnet => {
+			class Element {
+				_element;
+
+				constructor(element) {
+					this._element = element;
+				}
+
+				getHeight() {
+					return this.getElement().offsetHeight;
+				}
+
+				getWidth() {
+					return this.getElement().offsetWidth;
+				}
+
+				getRect() {
+					return this.getElement().getBoundingClientRect();
+				}
+
+				getElement() {
+					return this._element;
+				}
+
+				getId() {
+					return this._element.getAttribute('id');
+				}
+
+				setElement(element) {
+					this._element = element;
+				}
+			}
+
+			class Disk extends Element {
+				static height = 20;
+				static width = 20;
+
+				getWidth() {
+					return this.getElement().style.width.replace('px', '');
+				}
+
+				isSetted() {
+					return this.getElement().parentNode !== null;
+				}
+			}
+
+			class CreateDisk {
+				constructor() {}
+
+				create(startIndex, count) {
+					let list = [];
+
+					for(let i = startIndex; i < startIndex+count; i++) {
+						list.push(this._createDisk(i*20, i));
+					}
+
+					return list;
+				}
+
+				_createDisk(increase, index) {
+					let disk = document.createElement('div');
+
+					disk.setAttribute('class', 'disk');
+					disk.setAttribute('style', `height:${Disk.height}px;width:${Disk.width+increase}px`);
+					disk.setAttribute('id', `disk${index}`);
+
+					return new Disk(disk);
+				}
+			}
+
+			class Tower extends Element{
+				static gap = 5;
+
+				constructor(tower) {
+					super(tower);
+				}
+
+				add(disk) {
+					this.getElement().appendChild(disk.getElement());
+				}
+
+				remove(disk) {
+					this.getElement().removeChild(disk.getElement());
+				}
+
+				getDisks() {
+					return Array.from(this.getElement().childNodes, element => new Disk(element));
+				}
+			}
+
+			class Player {
+				constructor() {}
+
+				solve(start, end, temp, disks) {
+					if(disks.length === 1) {
+						let disk = disks[0];
+						
+						console.log(`Take disk[${disks[0].getId()}] from tower[${start.getId()}] to tower[${end.getId()}]`);
+						
+						return this.moveOne(start, end, disk);
+					}
+					else {
+						return this.solve(start, temp, end, disks.slice(0, disks.length-1)).then(() => {
+							return this.solve(start, end, temp, disks.slice(disks.length-1));
+						}).then(() => {
+							return this.solve(temp, end, start, disks.slice(0, disks.length-1));
+						});
+					}
+				}
+
+				moveOne(start, end, disk) {
+					let dark = this._arranged(end, new Disk(disk.getElement().cloneNode(true)), 0, end.getDisks().length+1);
+
+					dark.getElement().style.opacity = 0;
+					end.add(dark);
+
+					return new Promise((resolve, reject) => {
+						disk.getElement().animate({
+							transform: ['translate(0px, 0px)', `translate(${dark.getRect().left-disk.getRect().left}px, ${dark.getRect().top-disk.getRect().top}px)`],
+						}, 3000).onfinish = resolve;
+					}).then(() => {
+						start.remove(disk);
+						dark.getElement().style.opacity = 1;
+						disk.setElement(dark.getElement());
+					});
+				}
+
+				arrange(tower, disks) {
+					disks.forEach((disk, index, array) => {
+						if(!this._arranged(tower, disk, index, array.length).isSetted()) {
+							tower.add(disk);
+						}
+					});
+
+					return this;
+				}
+
+				_arranged(tower, disk, index, diskCount) {
+					let style = disk.getElement().style;
+
+					style.left = `${(tower.getWidth()-disk.getWidth())/2}px`;
+					style.top = `${this._getTop(tower.getHeight(), diskCount)+(Tower.gap+Disk.height)*index}px`;
+
+					return disk;
+				}
+
+				_getTop(towerHeight, diskCount) {
+					let top = towerHeight-(Disk.height+Tower.gap)*diskCount;
+
+					if(top < 0) {
+						let container = document.querySelector('#container');
+
+						container.style.height = `${towerHeight-top}px`;
+
+						top = 0;
+					}
+
+					return top;
+				}
+			}
+
+			document.querySelector('#diskCount').addEventListener('input', event => {
+				let latest = Number.parseInt(event.target.value);
+
+				if(latest < 1) {
+					event.target.value = 1;
+					latest = 1;
+				}
+
+				let currentDisks = start.getDisks();
+				let diff = latest-currentDisks.length;
+
+				player = new Player();
+
+				if(diff > 0) {
+					player.arrange(start, [...currentDisks, ...new CreateDisk().create(currentDisks.length, diff)]);
+				} else if(diff < 0) {
+					for(let i = diff; i < 0; i++) {
+						start.remove(currentDisks.pop());
+					}
+
+					player.arrange(start, currentDisks);
+				} else {
+					return false;
+				}
+
+				disks = start.getDisks();
+			});
+
+			document.querySelector('#btnStart').addEventListener('click', event => {
+				if(player !== undefined) {
+					event.target.disabled = true;
+					document.querySelector('#diskCount').readOnly = true;
+
+					player.solve(start, end, temp, disks).then(() => {
+						alert('執行結束');
+					});
+				} else {
+					alert('請先選擇盤子數量');
+				}
+			});
+
+			document.querySelector('#btnRset').addEventListener('click', event => window.location.reload());
+
+			let disks;
+			let player;
+			let start = new Tower(document.querySelector('#start'));
+			let end = new Tower(document.querySelector('#end'));
+			let temp = new Tower(document.querySelector('#temp'));
+		});
+	</script>
+	<body>
+		<div id="input">
+			請輸入盤子數: <input type="number" size="5" id="diskCount" /><button id="btnStart" type="button">開始</button><button id="btnRset" type="button">重新</button>
+		</div>
+		<div id="container" class="container">
+			<div id="start" class="start"></div>
+			<div id="end" class="end"></div>
+			<div id="temp" class="temp"></div>
+		<div>
+	</body>
+</html>
