@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Selection Sort</title>
+        <style>
+            .table {
+                display: table;
+                border-collapse: separate;
+            }
+
+            .row { 
+                display: table-row;
+            }
+
+            .cell {
+                display: table-cell;
+                font-size: 6em;
+                position: absolute;
+            }
+
+            .border {
+                border: 5px solid red;
+            }
+            
+            @keyframes border {    
+                from, to {    
+                    border-color: transparent    
+                }    
+                50% {    
+                    border-color: red    
+                }    
+            }
+        </style>
+    </head>
+    <script>
+        document.addEventListener('DOMContentLoaded', event => {
+            class DataSupplier {
+                #vm;
+
+                constructor(vm) {
+                    this.#vm = vm;
+                };
+
+                createData(count) {
+                    let data = [];
+
+                    for(let i = 0; i < count; i++) {
+                        data.push(Math.floor((Math.random()*99)+1));
+                    }
+
+                    return data;
+                }
+
+                swap(data, index1, index2) {
+                    [data[index1], data[index2]] = [data[index2], data[index1]];
+
+                    return data;
+                }
+            };
+
+            class View {
+                #vm;
+                
+                constructor(vm, id) {
+                    this.#vm = vm;
+                    this.container = document.querySelector(`#${id}`);
+                }
+
+                render() {
+                    let data = this.#vm.createData(7);
+                    let table = document.createElement('div');
+                    let row = document.createElement('div');
+
+                    table.setAttribute('class', 'table');
+                    row.setAttribute('class', 'row');
+                    table.appendChild(row);
+                    this.container.appendChild(table);
+
+                    this.#vm.createData(7).reduce((container, data, index) => {
+                        let cell = document.createElement('div');
+
+                        cell.setAttribute('id', this.#getId(index));
+                        cell.setAttribute('data-index', index);
+                        cell.setAttribute('class', 'cell');
+                        cell.setAttribute('style', `left: ${150*index}px; top: 50px`);
+                        cell.textContent = data;
+                        row.appendChild(cell);
+
+                        return row;
+                    }, row);
+                }
+
+                chooseEffect(index) {
+                    let div = document.querySelector(`#${this.#getId(index)}`);
+
+                    div.setAttribute('class', `${div.getAttribute('class')} border`);
+                    div.setAttribute('style', `${div.getAttribute('style')};animation: border 1s linear 3`);
+
+                    return div;
+                }
+
+                getCenterLocation() {
+                    let data = this.#vm.getData();
+                    let location = document.querySelector(`#${this.#getId(Math.ceil(data.length/2)-1)}`).getBoundingClientRect();
+
+                    return {
+                        left: location.left,
+                        top: location.top
+                    };
+                }
+
+                move(element, end) {
+                    let location = element.getBoundingClientRect();
+                    let left = `${end.left-location.left}px`;
+                    let top = `${end.top-location.top}px`;
+
+                    return element.animate({
+                        transform: ['translate(0px, 0px)', `translate(${left}, ${top})`]
+                    }, 3000)
+                    .finished
+                    .then(target => {
+                        let element = target.effect.target;
+
+                        element.setAttribute('style', `position: absolute; left: ${end.left}px; top: ${end.top}px`);
+                        this.removeBorder(element);
+
+                        return {
+                            element,
+                            location
+                        };
+                    });
+                }
+
+                swap(index1, index2) {
+                    let element1 = document.querySelector(`#${this.#getId(index1)}`);
+                    let element2 = document.querySelector(`#${this.#getId(index2)}`);
+                    
+                    [element1.id, element2.id] = [element2.id, element1.id];
+                    [element1.dataset.index, element2.dataset.index] = [element2.dataset.index, element1.dataset.index];
+                }
+
+                removeBorder(element) {
+                    element.classList.remove('border');
+                }
+
+                #getId(index) {
+                    return `index_${index}`;
+                }
+            };
+
+            class ViewModel {
+                #data;
+                #view;
+                #ds;
+                #player;
+
+                constructor() {}
+
+                addView(view) {
+                    this.#view = view;
+                    
+                    return this;
+                }
+
+                addDataSupplier(ds) {
+                    this.#ds = ds;
+
+                    return this;
+                }
+
+                addPlayer(player) {
+                    this.#player = player;
+
+                    return this;
+                }
+
+                createData(count) {
+                    this.#data = this.#ds.createData(count);
+
+                    return this.getData();
+                }
+
+                getData() {
+                    return this.#data;
+                }
+
+                choose(index) {
+                    let element = this.#view.chooseEffect(index);
+                    
+                    return new Promise(resolve => element.addEventListener('animationend', resolve))
+                        .then(event => event.target);
+                }
+
+                display() {
+                    this.#view.render();
+                    this.#player.sort();
+                }
+
+                getCenterLocation() {
+                    return this.#view.getCenterLocation();
+                }
+
+                move(element, end) {
+                    return this.#view.move(element, end);
+                }
+
+                swap(eleInfo, index) {
+                    return this.choose(index)
+                        .then(element => this.move(element, eleInfo.location))
+                        .then(moveInfo => this.move(eleInfo.element, moveInfo.location))
+                        .then(moveInfo => {
+                            this.#ds.swap(this.#data, eleInfo.element.dataset.index, index);
+                            this.#view.swap(eleInfo.element.dataset.index, index);
+                        });
+                }
+
+                removeBorder(element) {
+                    this.#view.removeBorder(element);
+                }
+            };
+
+            class Player {
+                #vm;
+
+                constructor(vm) {
+                    this.#vm = vm;
+                }
+
+                sort() {
+                    let data = this.#vm.getData();
+                    let start = Promise.resolve();
+                    
+                    for(let i = 0; i < data.length; i++) {
+                        start = start.then(() => this.#vm.choose(i))
+                            .then(element => {
+                                let destination = this.#vm.getCenterLocation();
+                                let min = this.#findMin(data, i);
+
+                                if(min !== i) {
+                                    destination.top += 150;
+
+                                    return this.#vm.move(element, destination)
+                                        .then(moveInfo => this.#vm.swap(moveInfo, this.#findMin(data, i)));
+                                } else {
+                                    this.#vm.removeBorder(element);
+                                }
+                            });
+                    }
+
+                    start.then(() => {
+                        if(confirm('再來一次?')) {
+                            window.location.reload();
+                        } else {
+                            alert('執行完成');
+                        }
+                    });
+                }
+
+                #findMin(data, start = 0) {
+                    let min = start;
+
+                    for(let i = start+1; i < data.length; i++) {
+                        if(data[min] > data[i]) {
+                            min = i;
+                        }
+                    }
+                    
+                    return min;
+                }
+            };
+
+            let vm = new ViewModel();
+            let view = new View(vm, 'app');
+            let ds = new DataSupplier(vm);
+            let player = new Player(vm);
+
+            vm.addDataSupplier(ds)
+                .addView(view)
+                .addPlayer(player)
+                .display();
+        });
+    </script>
+    <body>
+        <div id="app"></div>
+    </body>
+</html>
